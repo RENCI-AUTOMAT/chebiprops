@@ -20,14 +20,43 @@ def read_names():
             names[cid] = t
     return names
 
+def update_ancestors(ancestors,parent,iia):
+    kids = iia[parent]
+    for kid in kids:
+        ancestors[kid].append(parent)
+        ancestors[kid] += ancestors[parent]
+        update_ancestors(ancestors,kid,iia)
+
+def get_ancestors(iia):
+    ancestors = defaultdict(list)
+    role = 'CHEBI:50906'
+    update_ancestors(ancestors,role,iia)
+    print(ancestors['CHEBI:50904'])
+    return ancestors
+
 def read_roles():
     """This format is not completely obvious, but the triple is (FINAL_ID)-[type]->(INIT_ID)."""
     roles = defaultdict(list)
+    invert_is_a = defaultdict(list)
     with open('relation.tsv','r') as inf:
         for line in inf:
             x = line.strip().split('\t')
             if x[1] == 'has_role':
                 roles[f'CHEBI:{x[3]}'].append(f'CHEBI:{x[2]}')
+            elif x[1] == 'is_a':
+                child = f'CHEBI:{x[3]}'
+                parent = f'CHEBI:{x[2]}'
+                invert_is_a[parent].append(child)
+    #Now include parents
+    ancestors = get_ancestors(invert_is_a)
+    for node,noderoles in roles.items():
+        if node == 'CHEBI:64663':
+            print('hi')
+        restroles= []
+        for role in noderoles:
+            moreroles=ancestors[role]
+            restroles += moreroles
+        roles[node] += restroles
     return roles
 
 def chunk(l,n):
@@ -57,8 +86,10 @@ def transform(nodes,roles,names):
         outnode = {'id': node['id']['identifier'], 'name': node['id'].get('label',''),
                    'equivalent_identifiers': [eid['identifier'] for eid in node['equivalent_identifiers']],
                    'category': node['type']}
-        rolenames = [ fixname(names[x]) for x in roles[node_id]]
+        rolenames = [ fixname(names[x]) for x in roles[node_id] ]
         for rn in rolenames:
+            if rn in ['CHEBI_ROLE:role', 'CHEBI_ROLE:biological_role', 'CHEBI_ROLE:chemical_role', 'CHEBI_ROLE:application']:
+                continue
             outnode[rn] = True
         transformed.append(outnode)
     return transformed
